@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { listActivity } from "../controllers/activity.controller.js";
 import { cancelAccessRequest, discoverProjects, listAccessRequests, requestAccess, reviewAccessRequest } from "../controllers/access-request.controller.js";
-import { addMember, changeMemberRole, listAvailableUsers, listMembers, removeMember } from "../controllers/membership.controller.js";
+import { addMember, assignProjectManager, changeMemberRole, listAvailableUsers, listMembers, removeMember } from "../controllers/membership.controller.js";
 import { archiveProject, createProject, createProjectNote, deleteProject, deleteProjectNote, getProject, listProjects, updateProject } from "../controllers/project.controller.js";
 import { createTask, listTasks } from "../controllers/task.controller.js";
 import { adminOnly, authenticate } from "../middleware/authenticate.js";
@@ -24,6 +24,7 @@ router.delete("/:id/notes/:noteId", deleteProjectNote);
 router.get("/:id/members", listMembers);
 router.get("/:id/available-users", listAvailableUsers);
 router.post("/:id/members", addMember);
+router.put("/:id/managers/:userId", adminOnly, assignProjectManager);
 router.patch("/:id/members/:userId", changeMemberRole);
 router.delete("/:id/members/:userId", removeMember);
 router.get("/:id/tasks", listTasks);

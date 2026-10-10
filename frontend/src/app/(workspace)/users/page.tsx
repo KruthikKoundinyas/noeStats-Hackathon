@@ -11,13 +11,17 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-import type { User } from "@/types/api";
+import type { Project, User } from "@/types/api";
 import { useEffect, useState } from "react";
 
 export default function UsersPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false);
+  const [message, setMessage] = useState("");
+  const [assignmentError, setAssignmentError] = useState("");
   const load = (showLoading = true) => {
     if (showLoading) setLoading(true);
     return api<{ items: User[] }>("/api/users?limit=100")
@@ -28,6 +32,8 @@ export default function UsersPage() {
     if (user?.platformRole !== "ADMIN") return;
     const timer = window.setTimeout(() => {
       void load(false);
+      void api<{ items: Project[] }>("/api/projects?status=ACTIVE")
+        .then((data) => setProjects(data.items));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [user]);
@@ -46,6 +52,27 @@ export default function UsersPage() {
     });
     await load(false);
   }
+  async function assignProjectManager(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const userId = String(data.get("userId"));
+    const projectId = String(data.get("projectId"));
+    setAssigning(true);
+    setMessage("");
+    setAssignmentError("");
+    try {
+      await api(`/api/projects/${projectId}/managers/${userId}`, { method: "PUT" });
+      const selectedUser = items.find((item) => (item._id || item.id) === userId);
+      const selectedProject = projects.find((project) => project._id === projectId);
+      setMessage(`${selectedUser?.name || "User"} is now a Project Manager for ${selectedProject?.name || "the project"}.`);
+      form.reset();
+    } catch (value) {
+      setAssignmentError(value instanceof Error ? value.message : "Unable to assign Project Manager");
+    } finally {
+      setAssigning(false);
+    }
+  }
   return (
     <div className="space-y-6">
       <div>
@@ -55,6 +82,31 @@ export default function UsersPage() {
           Manage platform access and account status.
         </p>
       </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Assign Project Manager</CardTitle>
+          <CardDescription>
+            Choose an active user and the project they should manage.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={assignProjectManager} className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <select name="userId" required defaultValue="" className="h-9 rounded-md border bg-background px-3 text-sm">
+              <option value="" disabled>Select user by name</option>
+              {items.filter((item) => item.isActive).map((item) => (
+                <option key={item._id || item.id} value={item._id || item.id}>{item.name} ({item.email})</option>
+              ))}
+            </select>
+            <select name="projectId" required defaultValue="" className="h-9 rounded-md border bg-background px-3 text-sm">
+              <option value="" disabled>Select project</option>
+              {projects.map((project) => <option key={project._id} value={project._id}>{project.name}</option>)}
+            </select>
+            <Button type="submit" disabled={assigning || projects.length === 0}>{assigning ? "Assigning…" : "Assign PM"}</Button>
+          </form>
+          {message && <p className="mt-3 text-sm text-emerald-700">{message}</p>}
+          {assignmentError && <p className="mt-3 text-sm text-destructive">{assignmentError}</p>}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>All users</CardTitle>

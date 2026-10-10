@@ -1,4 +1,5 @@
 import ProjectMember from "../models/project-member.js";
+import Project from "../models/project.js";
 import User from "../models/user.js";
 import { PROJECT_ROLES } from "../config/permissions.js";
 import { recordActivity } from "../services/activity.service.js";
@@ -47,6 +48,39 @@ export async function addMember(req, res) {
   await createNotification(user._id, "PROJECT_MEMBERSHIP", { projectId: req.params.id, role: member.role });
   emitToProject(req.params.id, "project.member_added", member);
   res.status(201).json({ member });
+}
+
+export async function assignProjectManager(req, res) {
+  const projectId = validId(req.params.id, "project id");
+  const userId = validId(req.params.userId, "user id");
+  const [project, user] = await Promise.all([
+    Project.findById(projectId).select("name status"),
+    User.findById(userId),
+  ]);
+  if (!project) fail(404, "Project not found");
+  if (project.status !== "ACTIVE") fail(409, "Cannot assign a manager to an archived project");
+  if (!user?.isActive) fail(404, "Active user not found");
+  const existing = await ProjectMember.findOne({ projectId, userId });
+  const member = await ProjectMember.findOneAndUpdate(
+    { projectId, userId },
+    { role: "PROJECT_MANAGER" },
+    { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true },
+  );
+  await recordActivity(
+    req.user._id,
+    projectId,
+    existing ? "project.role_changed" : "project.member_added",
+    "ProjectMember",
+    member._id,
+    { userId, role: member.role },
+  );
+  await createNotification(userId, existing ? "PROJECT_ROLE_CHANGED" : "PROJECT_MEMBERSHIP", {
+    projectId: String(projectId),
+    projectName: project.name,
+    role: member.role,
+  });
+  emitToProject(projectId, existing ? "project.role_changed" : "project.member_added", member);
+  res.json({ member });
 }
 
 export async function changeMemberRole(req, res) {
