@@ -1,0 +1,855 @@
+{
+  "info": {
+    "name": "NeoStats Backend - Complete API Tests",
+    "description": "Run in order after npm run seed. Tests all minimal backend resources, authorization, logout, and optimistic concurrency.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "password", "value": "Password123!" },
+    { "key": "projectId", "value": "" },
+    { "key": "managerId", "value": "" },
+    { "key": "memberId", "value": "" },
+    { "key": "viewerId", "value": "" },
+    { "key": "taskId", "value": "" },
+    { "key": "taskVersion", "value": "" },
+    { "key": "commentId", "value": "" },
+    { "key": "notificationId", "value": "" }
+  ],
+  "auth": { "type": "noauth" },
+  "item": [
+    {
+      "name": "01 Authentication and Users",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 and healthy', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('ok'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register ordinary user (Admin request is ignored)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Registration Test\",\n  \"email\": \"registration{{$timestamp}}@example.com\",\n  \"password\": \"Password123!\",\n  \"requestedRole\": \"VIEWER\",\n  \"platformRole\": \"ADMIN\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b=pm.response.json(); pm.test('201 USER, never self-appointed Admin',()=>{pm.response.to.have.status(201);pm.expect(b.user.platformRole).to.eql('USER');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Admin",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"admin@neostats.local\",\"password\":\"{{password}}\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b=pm.response.json();pm.test('Admin login and HTTP-only cookie created',()=>{pm.response.to.have.status(200);pm.expect(b.user.platformRole).to.eql('ADMIN');pm.expect(pm.cookies.has('neostats_token')).to.eql(true);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current User",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/me" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns Admin',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().user.email).to.eql('admin@neostats.local');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Users and save seeded IDs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users?limit=100"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b=pm.response.json();pm.test('Lists users',()=>{pm.response.to.have.status(200);pm.expect(b.items).to.be.an('array');});for(const u of b.items){if(u.email==='manager@neostats.local')pm.collectionVariables.set('managerId',u._id);if(u.email==='member@neostats.local')pm.collectionVariables.set('memberId',u._id);if(u.email==='viewer@neostats.local')pm.collectionVariables.set('viewerId',u._id);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"API User\",\"email\":\"api{{$timestamp}}@example.com\",\"password\":\"Password123!\",\"requestedRole\":\"TEAM_MEMBER\"}"
+            },
+            "url": "{{baseUrl}}/api/users"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Admin creates user',()=>pm.response.to.have.status(201));pm.collectionVariables.set('createdUserId',pm.response.json().user._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read User",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/users/{{createdUserId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reads user',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Updated API User\"}" },
+            "url": "{{baseUrl}}/api/users/{{createdUserId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Updates user',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().user.name).to.eql('Updated API User');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Platform Role",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"platformRole\":\"ADMIN\"}" },
+            "url": "{{baseUrl}}/api/users/{{createdUserId}}/role"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Changes trusted role',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().user.platformRole).to.eql('ADMIN');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate User",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/users/{{createdUserId}}/deactivate"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Deactivates user',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().user.isActive).to.eql(false);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bad Registration Validation",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"bad\",\"password\":\"short\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejects missing fields',()=>pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Projects and Members",
+      "item": [
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Postman Project {{$timestamp}}\",\"description\":\"Created by collection\",\"markdownContent\":\"# Postman Project\"}"
+            },
+            "url": "{{baseUrl}}/api/projects"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b=pm.response.json();pm.test('Creates project',()=>pm.response.to.have.status(201));pm.collectionVariables.set('projectId',b.project._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects?status=ACTIVE"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Lists projects',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().items).to.be.an('array');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read Project",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reads project',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"description\":\"Updated via Postman\",\"markdownContent\":\"# Updated\"}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Updates project',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Manager",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\":\"{{managerId}}\",\"role\":\"PROJECT_MANAGER\"}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Adds manager',()=>pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Member",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\":\"{{memberId}}\",\"role\":\"TEAM_MEMBER\"}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Adds member',()=>pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Viewer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"userId\":\"{{viewerId}}\",\"role\":\"VIEWER\"}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Adds viewer',()=>pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Members",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Lists creator plus three assigned members',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().items.length).to.eql(4);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Viewer Role",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"role\":\"TEAM_MEMBER\"}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members/{{viewerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Changes project role',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restore Viewer Role",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"role\":\"VIEWER\"}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members/{{viewerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Restores project role',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Tasks Comments Activity Notifications",
+      "item": [
+        {
+          "name": "Create Assigned Task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Postman task\",\"description\":\"Exercise all task APIs\",\"assigneeId\":\"{{memberId}}\"}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const t=pm.response.json().task;pm.test('Creates task at version 1',()=>{pm.response.to.have.status(201);pm.expect(t.version).to.eql(1);});pm.collectionVariables.set('taskId',t._id);pm.collectionVariables.set('taskVersion',t.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Tasks with filters",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/tasks?status=TODO&assigneeId={{memberId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Lists tasks',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().items).to.be.an('array');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read Task",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reads task',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Task",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Postman task updated\",\"status\":\"IN_PROGRESS\",\"version\":{{taskVersion}}}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const t=pm.response.json().task;pm.test('Updates and increments version',()=>{pm.response.to.have.status(200);pm.expect(t.version).to.eql(2);});pm.collectionVariables.set('taskVersion',t.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject Stale Task Update",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"DONE\",\"version\":1}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 409 and latest task',()=>{pm.response.to.have.status(409);pm.expect(pm.response.json().details.latest.version).to.eql(2);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Comment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"content\":\"Comment from Postman\"}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/comments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Creates comment',()=>pm.response.to.have.status(201));pm.collectionVariables.set('commentId',pm.response.json().comment._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Comments",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/comments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Lists comments',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().items.length).to.be.above(0);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Project Activity",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/activity"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Shows activity',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().items.length).to.be.above(0);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Member",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"member@neostats.local\",\"password\":\"{{password}}\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Member login and HTTP-only cookie created',()=>{pm.response.to.have.status(200);pm.expect(pm.cookies.has('neostats_token')).to.eql(true);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Member Updates Assigned Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"DONE\",\"title\":\"Ignored unauthorized field\",\"version\":{{taskVersion}}}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const t=pm.response.json().task;pm.test('Member changes status only',()=>{pm.response.to.have.status(200);pm.expect(t.status).to.eql('DONE');pm.expect(t.title).to.eql('Postman task updated');});pm.collectionVariables.set('taskVersion',t.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Member Notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/notifications?unread=true"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const b=pm.response.json();pm.test('Gets unread notifications',()=>{pm.response.to.have.status(200);pm.expect(b.items.length).to.be.above(0);});pm.collectionVariables.set('notificationId',b.items[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark Notification Read",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/notifications/{{notificationId}}/read"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Marks read',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().notification.readAt).to.not.eql(null);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Viewer",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"viewer@neostats.local\",\"password\":\"{{password}}\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Viewer login and HTTP-only cookie created',()=>{pm.response.to.have.status(200);pm.expect(pm.cookies.has('neostats_token')).to.eql(true);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Viewer Cannot Create Task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"title\":\"Forbidden\"}" },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Server enforces Viewer read-only',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Cleanup and Session",
+      "item": [
+        {
+          "name": "Login Admin Again",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"admin@neostats.local\",\"password\":\"{{password}}\"}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Admin login and HTTP-only cookie created',()=>{pm.response.to.have.status(200);pm.expect(pm.cookies.has('neostats_token')).to.eql(true);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Comment",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/comments/{{commentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Deletes comment',()=>pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Deletes task',()=>pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove Viewer",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members/{{viewerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Removes member',()=>pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Archive Project",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/archive"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Archives project',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().project.status).to.eql('ARCHIVED');});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/auth/logout" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Revokes session',()=>pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoked Token Rejected",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/me" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401 after logout',()=>pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
