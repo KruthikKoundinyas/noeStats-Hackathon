@@ -353,7 +353,8 @@ export default function ProjectPage({
     refresh();
     load();
   }
-  async function remove(userId: string) {
+  async function remove(userId: string, memberName: string) {
+    if (!window.confirm(`Remove ${memberName} from this project?`)) return;
     await api(`/api/projects/${id}/members/${userId}`, { method: "DELETE" });
     refresh();
     load();
@@ -748,7 +749,7 @@ export default function ProjectPage({
                       {member.userId.email}
                     </p>
                   </div>
-                  {canManage && member.role !== "PROJECT_MANAGER" ? (
+                  {canManage && (member.role !== "PROJECT_MANAGER" || isAdmin) ? (
                     <>
                       <select
                         value={member.role}
@@ -767,10 +768,10 @@ export default function ProjectPage({
                       </select>
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => remove(member.userId._id)}
+                        variant="destructive"
+                        onClick={() => void remove(member.userId._id, member.userId.name)}
                       >
-                        Remove
+                        <TrashIcon /> Remove member
                       </Button>
                     </>
                   ) : (

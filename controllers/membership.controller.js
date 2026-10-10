@@ -116,7 +116,7 @@ export async function removeMember(req, res) {
   const member = await withMutationLock(`project-members:${req.params.id}`, async () => {
     const current = await ProjectMember.findOne({ projectId: req.params.id, userId });
     if (!current) fail(404, "Membership not found");
-    if (current.role === "PROJECT_MANAGER") {
+    if (current.role === "PROJECT_MANAGER" && req.user.platformRole !== "ADMIN") {
       const managerCount = await ProjectMember.countDocuments({ projectId: req.params.id, role: "PROJECT_MANAGER" });
       if (managerCount <= 1) fail(409, "A project must always have at least one Project Manager");
     }
